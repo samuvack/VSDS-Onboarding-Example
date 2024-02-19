@@ -43,13 +43,13 @@ To define the LDES:
 curl -X POST -H "content-type: text/turtle" "http://localhost:9003/admin/api/v1/eventstreams" -d "@./definitions/occupancy.ttl"
 ```
 
-This may look like a bit of hocus-pocus but it is truly very simple. The [LDES definition](./definitions/occupancy.ttl) is a [turtle file](https://www.w3.org/TR/turtle/) which is a way of serializing [RDF](https://www.w3.org/RDF/). The definition file starts with a few declarations allowing for some short-hand notation so we do not get lost in translation. The other lines are the interesting part. First we start by saying that we define a LDES (`</occupancy> a ldes:EventStream`) and that we want the server to accept members and fetching the LDES on a sub-path (`/occupancy`). Then, we tell it what type our members will be (`sh:targetClass :offStreetParkingGround`, or `http://www.w3.org/ns/shacl#targetClass https://example.org/ns/mobility#offStreetParkingGround` in full). Finally, we tell it that these members are version objects of the state object identified by the member property `dcterms:isVersionOf` and can be distinguised by the member property `prov:generatedAtTime`. Essentially, these properties allow us to group members to find all versions of something respectively to order them to know which member precedes another member.
+This may look like a bit of hocus-pocus but it is truly very simple. The [LDES definition](./definitions/occupancy.ttl) is a [turtle file](https://www.w3.org/TR/turtle/) which is a way of serializing [RDF](https://www.w3.org/RDF/). The definition file starts with a few declarations allowing for some short-hand notation so we do not get lost in translation. The other lines are the interesting part. First we start by saying that we define a LDES (`</occupancy> a ldes:EventStream`) and that we want the server to accept members and fetching the LDES on a sub-path (`/occupancy`). Then, we tell it that the members are version objects of the state object identified by the member property `dcterms:isVersionOf` and can be distinguised by the member property `prov:generatedAtTime`. Essentially, these properties allow us to group members to find all versions of something respectively to order them to know which member precedes another member.
 
 We can verify that the LDES is actually known to the server by requesting it by its endpoint. This endpoint depends on several things: the port mapping, the base path of the server and the data set sub-path we defined in the LDES definition. In this example it is `http://localhost:9003/occupancy`.
 
 To check out our LDES:
 ```bash
-curl http://localhost:9003/occupancy
+curl "http://localhost:9003/occupancy"
 ```
 
 ## Storing Our First Member
@@ -74,7 +74,7 @@ The view definition is a turtle file very similar to the LDES definition. It con
 
 To check out our LDES:
 ```bash
-curl http://localhost:9003/occupancy/by-page
+curl "http://localhost:9003/occupancy/by-page"
 ```
 
 > **Note** that you can create more than one view of a LDES, even for simple pagination by specifying a different view URI and page size. Later when we learn about retention policies and different fragmentation strategies, this may make more sense. For now remember that you can create a view before or after you ingest data, You can delete views and re-create them with different options. For this, you will need to use the administration API. Later, we will show you how to enable the [swagger](https://swagger.io/) to explore this API.
@@ -84,7 +84,7 @@ Depending on the size of the data set the LDES Server magic may take a while to 
 
 To retrieve the data set:
 ```bash
-curl http://localhost:9003/occupancy/by-page?pageNumber=1
+curl "http://localhost:9003/occupancy/by-page?pageNumber=1"
 ```
 
 ## All Good Things Must Come To an End

@@ -1,4 +1,5 @@
-# Publishing as a Standard Open Linked Data Model
+# Publishing as a Standard Linked Open Data Model
+
 This quick start guide will show you how to create a more advanced processing pipeline in the [LDIO Workbench](https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/) for converting our example model to a [standard open vocabulary](https://github.com/vocol/mobivoc) and to publish that as a [Linked Data Event Stream (LDES)](https://semiceu.github.io/LinkedDataEventStreams/).
 
 Please see the [introduction](../README.md) for the example data set and pre-requisites, as well as an overview of all examples.
@@ -73,15 +74,13 @@ As mention above, to make it more interesting we will be retrieving the number o
 For example, to poll our source URL every two minutes we need to configure our pipeline input as:
 ```yaml
 input:
-  name: be.vlaanderen.informatievlaanderen.ldes.ldio.LdioHttpInPoller
+  name: Ldio:HttpInPoller
   config:
     url: https://data.stad.gent/api/explore/v2.1/catalog/datasets/real-time-bezetting-pr-gent/exports/csv?lang=en&timezone=Europe%2FBrussels
-    interval: PT1M
+    cron: 0 * * * * *
 ```
 
-This will ensure we receive the actual state of our parking lots at regular time intervals, which may or may not have changed since the last time we checked.
-
-> **Note** that we request the data as CSV but alternatively we could have used JSON or GeoJSON. We still need to configure an adapter to convert the received CSV message to linked data. We'll do that next.
+This will ensure we receive the actual state of our parking lots at regular time intervals (e.g. every minute), which may or may not have changed since the last time we checked. We still need to configure an adapter to convert the received CSV message to linked data. We'll do that next.
 
 ## With a Little Help From Our Pirates
 Now that we can get the actual state of our parking lots, we need to convert the source message in semicolon (`;`) separated CSV format to the linked data models we defined in the mapping. For this we can use a technology called [RDF Mapping Language](https://rml.io) (RML). There are various ways to produce the mapping that we need: directly using linked data which defines the [RML mapping rules](https://rml.io/specs/rml/) or indirectly using a more human readable way named [Yarrrml](https://rml.io/yarrrml/). Personally I prefer the real thing but using [Matey](https://rml.io/yarrrml/matey/) may be more your thing.
@@ -196,19 +195,48 @@ volumes:
     - ./workbench/config:/ldio/config:ro
 ```
 
-We also need to change our workbench pipeline to use the above RML mapping file and to include the RML mapping component (`RmlAdapter` instead of the `JsonLdAdapter` used in the basic setup). Our workbench pipeline input component is now complete and looks like this:
+We also need to change our workbench pipeline to use the above RML mapping file and to include the RML mapping component (`RmlAdapter` instead of the `JsonLdAdapter` used in the basic setup). Our workbench pipeline input component is now complete and looks like this (polls every 2 minutes):
 
 ```yaml
 input:
-  name: be.vlaanderen.informatievlaanderen.ldes.ldio.LdioHttpInPoller
+  name: Ldio:HttpInPoller
   config:
     url: https://data.stad.gent/api/explore/v2.1/catalog/datasets/real-time-bezetting-pr-gent/exports/csv?lang=en&timezone=Europe%2FBrussels
-    interval: PT1M
+    cron: 0 */2 * * * *
   adapter:
-    name: be.vlaanderen.informatievlaanderen.ldes.ldi.RmlAdapter
+    name: Ldio:RmlAdapter
     config:
       mapping: ./config/source-to-intermediate.ttl
 ```
+
+## Pirates Take Anything They Can
+We could have also requested the data as [JSON]( https://data.stad.gent/api/explore/v2.1/catalog/datasets/real-time-bezetting-pr-gent/exports/json?lang=en&timezone=Europe%2FBrussels) or [GeoJSON](https://data.stad.gent/api/explore/v2.1/catalog/datasets/real-time-bezetting-pr-gent/exports/geojson?lang=en&timezone=Europe%2FBrussels). It is as simple as using a different URL. Of course, the mapping in RML is a bit different for these as the formats and model structures are different. You can verify [later](#whats-on-the-menu) that these data formats can also be used.
+
+### Pirates Like JSON For Lunch
+The [JSON mapping](./workbench/config/json-to-intermediate.ttl) is slightly different as we need to tell the RML component to use JSON instead of CSV and how to iterate the JSON objects (for CSV it simply iterates over the non-header lines). So, now our map for JSON looks as this:
+```text
+:TriplesMap a rr:TriplesMap;
+  rml:logicalSource [
+    a rml:LogicalSource;
+    rml:source [ a carml:Stream ];
+    rml:referenceFormulation ql:JSONPath;
+    rml:iterator "$.*";
+  ];
+```
+> **Note** that our `rml:referenceFormulation` now uses `ql:JSONPath` and that we added `rml:iterator "$.*"` to tell it to iterate over the array elements.
+
+### Pirates Like GeoJSON For Dinner
+The [GeoJSON mapping](./workbench/config/geojson-to-intermediate.ttl) is very similar to the [JSON mapping](./workbench/config/json-to-intermediate.ttl). Allthough the GeoJSON structure is centered around `features` which contain a `geometry` and `properties` we can get away with ignoring the `geometry` as the `properties` also contain the `latitude` and `longitude` values. Basically we can iterate the elements in the `features` array and select the `properties`:
+```text
+:TriplesMap a rr:TriplesMap;
+  rml:logicalSource [
+    a rml:LogicalSource;
+    rml:source [ a carml:Stream ];
+    rml:referenceFormulation ql:JSONPath;
+    rml:iterator "$.features.*.properties";
+  ];
+```
+> **Note** that our `rml:referenceFormulation` also uses `ql:JSONPath` and that now we use `rml:iterator "$.features.*.properties"` to iterate.
 
 ## Using the Swiss Army Knife
 Now that we have an intermediate model as linked data we can use a [SPARQL](https://en.wikipedia.org/wiki/SPARQL) component which allows us to query the values in our intermediate model and [construct](https://www.w3.org/TR/rdf-sparql-query/#construct) a target model.
@@ -266,7 +294,7 @@ PREFIX mv:  <http://schema.mobivoc.org/#>
 ?id rdf:type mv:ParkingLot
 ```
 
-> **Note** that the syntax for our prefix definitions is slightly different: we use `PREFIX` instead of `@prefix` and there is no dot (`.`) at the end of the line.
+> **Note** that the syntax for our prefix definitions is slightly different than for the Turtle files: we use `PREFIX` instead of `@prefix` and there is no dot (`.`) at the end of the line.
 
 The full SPARQL query would be:
 ```text
@@ -325,7 +353,7 @@ Now that we have learned how to introduce structure in our target model we can c
 
 ```yaml
 transformers:
-  - name: be.vlaanderen.informatievlaanderen.ldes.ldi.SparqlConstructTransformer
+  - name: Ldio:SparqlConstructTransformer
     config:
       query: ./config/intermediate-to-target.rq
 ```
@@ -333,7 +361,7 @@ transformers:
 In addition, as our target model has changed, we need to fix the transformation step which creates the version object to:
 
 ```yaml
-  - name: be.vlaanderen.informatievlaanderen.ldes.ldi.VersionObjectCreator
+  - name: Ldio:VersionObjectCreator
     config:
       member-type: http://schema.mobivoc.org/#ParkingLot
       delimiter: "/"
@@ -343,13 +371,20 @@ In addition, as our target model has changed, we need to fix the transformation 
 ```
 
 And also the [definition of the LDES](./definitions/occupancy.ttl) to reflect the correct target class:
-
 ```text
 @prefix mv:          <http://schema.mobivoc.org/#>
 
 </occupancy> a ldes:EventStream ;
 	tree:shape [ a sh:NodeShape ; sh:targetClass mv:ParkingLot ] ;
 ```
+
+> **Note** that from LDES server v2.7.0 on you do not need to define the target class as the LDES server allows us to ingest entities with any type allowing for mixed streams of entity versions. A small step for the team but a giant step for data publishers because they now have the choice to host one LDES per entity type, one LDES for all their entities or any other configuration of their choosing. The LDES definition now becomes (we simply drop the `sh:targetClass mv:ParkingLot` triple):
+> ```text
+> @prefix mv:          <http://schema.mobivoc.org/#>
+> 
+> </occupancy> a ldes:EventStream ;
+> 	tree:shape [ a sh:NodeShape ] ;
+> ```
 
 > **Note** that in the [complete mapping](./workbench/config/intermediate-to-target.rq) when we query the properties from our source model that almost all of these query lines are wrapped by an `optional { ... }` construct. The reason for this is that any of these triples may be missing. Remember that the `WHERE` clause is in essence a filter on the collection of source triples, where each query line refines the subset of results from the previous query line. Therefore, if we do not use `optional` then the query returns no results and hence no target entity is constructed.
 
@@ -375,22 +410,41 @@ To run the LDES server and its storage service (mongo), wait until its up and ru
 ```bash
 clear
 
+# start and wait for the server and database systems
 docker compose up -d
 while ! docker logs $(docker ps -q -f "name=ldes-server$") 2> /dev/null | grep 'Started Application in' ; do sleep 1; done
 
+# define the LDES and the view
 curl -X POST -H "content-type: text/turtle" "http://localhost:9003/ldes/admin/api/v1/eventstreams" -d "@./definitions/occupancy.ttl"
 curl -X POST -H "content-type: text/turtle" "http://localhost:9003/ldes/admin/api/v1/eventstreams/occupancy/views" -d "@./definitions/occupancy.by-page.ttl"
 
+# start and wait for the workbench
 docker compose up ldio-workbench -d
 while ! docker logs $(docker ps -q -f "name=ldio-workbench$") 2> /dev/null | grep 'Started Application in' ; do sleep 1; done
 ```
 
+> **Note** that it may take up to two minutes before you see any data as the polling component runs every 2 minutes. You can see this in the docker logs for the workbench e.g. (notice the timestamps at the start of the lines):
+>```
+> 2024-01-18T13:04:34.805Z  INFO 1 --- [           main] b.v.i.ldes.ldio.Application              : Started Application in 5.447 seconds (process running for 6.163)
+> 2024-01-18T13:06:00.845Z  INFO 1 --- [onPool-worker-1] b.v.i.ldes.ldi.VersionObjectCreator      : Created version: https://stad.gent/nl/mobiliteit-openbare-werken/parkeren/park-and-ride-pr/pr-bourgoyen#2024-01-18T14:02:57+01:00
+> 2024-01-18T13:06:00.979Z  INFO 1 --- [onPool-worker-1] b.v.i.ldes.ldi.VersionObjectCreator      : Created version: https://stad.gent/nl/mobiliteit-openbare-werken/parkeren/park-and-ride-pr/pr-gentbrugge-arsenaal#2024-01-18T14:02:57+01:00
+> 2024-01-18T13:06:01.036Z  INFO 1 --- [onPool-worker-1] b.v.i.ldes.ldi.VersionObjectCreator      : Created version: https://stad.gent/nl/mobiliteit-openbare-werken/parkeren/park-and-ride-pr/pr-wondelgem-industrieweg#2024-01-18T14:02:34+01:00
+> 2024-01-18T13:06:01.078Z  INFO 1 --- [onPool-worker-1] b.v.i.ldes.ldi.VersionObjectCreator      : Created version: https://stad.gent/nl/mobiliteit-openbare-werken/parkeren/park-and-ride-pr/pr-loopexpo#2024-01-18T14:02:57+01:00
+> 2024-01-18T13:06:01.114Z  INFO 1 --- [onPool-worker-1] b.v.i.ldes.ldi.VersionObjectCreator      : Created version: https://stad.gent/nl/mobiliteit-openbare-werken/parkeren/park-and-ride-pr/pr-oostakker#2024-01-18T14:02:57+01:00
+>```
+
+To view the docker logs yourself you can execute the following (in a bash shell):
+```bash
+docker logs -f $(docker ps -q -f "name=ldio-workbench$")
+```
+This will display and keep following the workbench logs for updates. Press `CTRL-C` to stop following the logs.
+
 To verify the LDES, view and data:
 ```bash
 clear
-curl http://localhost:9003/ldes/occupancy
-curl http://localhost:9003/ldes/occupancy/by-page
-curl http://localhost:9003/ldes/occupancy/by-page?pageNumber=1
+curl "http://localhost:9003/ldes/occupancy"
+curl "http://localhost:9003/ldes/occupancy/by-page"
+curl "http://localhost:9003/ldes/occupancy/by-page?pageNumber=1"
 ```
 
 The last URL will contain our members, looking something like this (limited to one member):
@@ -448,6 +502,65 @@ The last URL will contain our members, looking something like this (limited to o
 ```
 
 > **Note** that every two minutes the pipeline will request the latest state of our parking lots and will create additional version objects. The identity of a member depends only on the `lastupdate` property of our parking lot. If that did not change for a parking lot then the pipeline will create a version object with an identical identity as before. Any such version object will be refused by the LDES server and a warning will be logged in the LDES server log. The new version objects are added to the LDES and become new members.
+
+## What's On The Menu?
+Above we have assumed that the input is CSV. We have seen [previously](#pirates-take-anything-they-can) that JSON and GeoJSON can also be converted to Linked Data using RML. In order to verify this, you need to change the [docker compose file](./docker-compose.yml) to use the [alternative pipelines](./workbench/alternative.yml) in the workbench by mapping that file as the workbench configuration file:
+
+```yaml
+  ldio-workbench:
+    container_name: advanced-conversion_ldio-workbench
+    image: ldes/ldi-orchestrator:2.0.0-SNAPSHOT # you can safely change this to the latest 1.x.y version
+    volumes:
+      - ./workbench/config:/ldio/config:ro
+      - ./workbench/alternative.yml:/ldio/application.yml:ro
+    ...
+```
+
+**Note** that the last line maps `./workbench/alternative.yml` instead of `./workbench/application.yml` to `/ldio/application.yml`.
+
+To start the systems you can use the same instructions:
+```bash
+clear
+
+# start and wait for the server and database systems
+docker compose up -d
+while ! docker logs $(docker ps -q -f "name=ldes-server$") 2> /dev/null | grep 'Started Application in' ; do sleep 1; done
+
+# define the LDES and the view
+curl -X POST -H "content-type: text/turtle" "http://localhost:9003/ldes/admin/api/v1/eventstreams" -d "@./definitions/occupancy.ttl"
+curl -X POST -H "content-type: text/turtle" "http://localhost:9003/ldes/admin/api/v1/eventstreams/occupancy/views" -d "@./definitions/occupancy.by-page.ttl"
+
+# start and wait for the workbench
+docker compose up ldio-workbench -d
+while ! docker logs $(docker ps -q -f "name=ldio-workbench$") 2> /dev/null | grep 'Started Application in' ; do sleep 1; done
+```
+
+Because we have used HTTP listeners as input components and not a HTTP poller you need to send a test message to the (Geo)JSON pipeline. You can verify that the (Geo)JSON is correctly translated by looking at the LDES in the same way as above.
+
+To send the JSON test message to the JSON pipeline:
+```bash
+curl -X POST -H "Content-Type: application/json" "http://localhost:9004/json-pipeline" -d "@./data/message.json"
+```
+
+To send the JSON test message to the JSON pipeline:
+```bash
+curl -X POST -H "Content-Type: application/json" "http://localhost:9004/geojson-pipeline" -d "@./data/message.geo.json"
+```
+
+To verify the LDES, view and data:
+```bash
+clear
+curl "http://localhost:9003/ldes/occupancy"
+curl "http://localhost:9003/ldes/occupancy/by-page"
+curl "http://localhost:9003/ldes/occupancy/by-page?pageNumber=1"
+```
+
+You can also simply look at the workbench docker logs file to verify that the members have been created and send to the LDES server:
+```bash
+docker logs -f $(docker ps -q -f "name=ldio-workbench$")
+```
+
+> **Note** use `CTRL-C` to stop following the logs.
 
 ## Every End is a New Beginning
 You should now know some basics about linked data. You learned how to define a mapping from non-linked data to linked data using RML as well as how to transform a linked data model into a different linked data model. In addition, you learned that you can periodically pull data into a workbench pipeline to create a continuous stream of versions of the state of some system. You can now stop all the systems.

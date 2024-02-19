@@ -1,4 +1,3 @@
-
 # Publishing a Simple Data Set With a Basic Setup
 This quick start guide will show you how to combine a [LDIO Workbench](https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/) and a [LDES Server](https://informatievlaanderen.github.io/VSDS-LDESServer4J/) to create a basic setup for publishing [linked data](https://en.wikipedia.org/wiki/Linked_data) as a [Linked Data Event Stream (LDES)](https://semiceu.github.io/LinkedDataEventStreams/).
 
@@ -80,11 +79,11 @@ For the port (`server.port`) and sub-path (`server.servlet.context-path`) on whi
 ## Create the LDIO Workbench Configuration File
 For the workbench configuration file we can start from the [configuration](../minimal-workbench/config/application.yml) we used for the [minimal workbench tutorial](../minimal-workbench/README.md) but serve the pipelines on a different port (`80`).
 
-As we are now creating an integrated setup we will not send the generated members to the container log using the `LdioConsoleout` component, but instead we use the `LdioHttpOut` component. This component allows us to send the member to the LDES server ingest endpoint over HTTP. How do we determine this HTTP ingest endpoint? Because the LDIO Workbench and the LDES Server share the same private network, the workbench can address the server using its service name `ldes-server` as server path `http://ldes-server`. As we have set the sub-path to serve all event streams from `/ldes` we append that to the server path. Finally, as we [define](./definitions/occupancy.ttl) our LDES in the same way as we did in the [minimal server tutorial](../minimal-server/README.md), we need to append the name of the LDES (`/occupancy`). Putting all of this together, in this tutorial the HTTP ingest endpoint for our LDES becomes `http://ldes-server/ldes/occupancy`. The configuration for our output thus becomes:
+As we are now creating an integrated setup we will not send the generated members to the container log using the `ConsoleOut` component, but instead we use the `LdioHttpOut` component. This component allows us to send the member to the LDES server ingest endpoint over HTTP. How do we determine this HTTP ingest endpoint? Because the LDIO Workbench and the LDES Server share the same private network, the workbench can address the server using its service name `ldes-server` as server path `http://ldes-server`. As we have set the sub-path to serve all event streams from `/ldes` we append that to the server path. Finally, as we [define](./definitions/occupancy.ttl) our LDES in the same way as we did in the [minimal server tutorial](../minimal-server/README.md), we need to append the name of the LDES (`/occupancy`). Putting all of this together, in this tutorial the HTTP ingest endpoint for our LDES becomes `http://ldes-server/ldes/occupancy`. The configuration for our output thus becomes:
 
 ```yaml
 outputs:
-  - name: be.vlaanderen.informatievlaanderen.ldes.ldio.LdioHttpOut
+  - name: Ldio:HttpOut
     config:
       endpoint: http://ldes-server/ldes/occupancy
       rdf-writer:
@@ -104,33 +103,39 @@ Now we can change the workbench input configuration to:
 
 ```yaml
 input:
-  name: be.vlaanderen.informatievlaanderen.ldes.ldio.LdioHttpIn
+  name: Ldio:HttpIn
   adapter:
-    name: be.vlaanderen.informatievlaanderen.ldes.ldi.JsonToLdAdapter
+    name: Ldio:JsonToLdAdapter
     config:
       core-context: file:///ldio/context.jsonld
 ```
 
-> **Note** that we have to use the URI notation for the internal container path (`/ldio/context.jsonld`). Alternatively, we could use some pre-existing context somewhere online ar refer to it by URL.
+> **Note** that we have to use the URI notation for the internal container path (`/ldio/context.jsonld`). Alternatively, we could use some pre-existing context somewhere online or refer to it by URL.
 
 For the transformations steps we keep the same configuration for the version object creation and end up with the resulting [configuration file](./workbench/application.yml)
 
 ## Bringing it All Together
 Now that we have everything set up, let's test the systems. We need to bring all systems up, wait for both the LDIO Workbench and LDES Server to be available, send the LDES and view definitions to the server and finally send the JSON message to the workbench. Then we can retrieve the LDEs, the view and the page containing the actual member.
 
-To run the systems, wait, send definitions and message:
+To run the systems, wait, send definitions and message (execute in a **bash** shell):
 ```bash
 clear
+
 # bring the systems up
 docker compose up -d
+
 # wait for the workbench
 while ! docker logs $(docker ps -q -f "name=ldio-workbench$") 2> /dev/null | grep 'Started Application in' ; do sleep 1; done
+
 # wait for the server
 while ! docker logs $(docker ps -q -f "name=ldes-server$") 2> /dev/null | grep 'Started Application in' ; do sleep 1; done
+
 # define the LDES
 curl -X POST -H "content-type: text/turtle" "http://localhost:9003/ldes/admin/api/v1/eventstreams" -d "@./definitions/occupancy.ttl"
+
 # define the view
 curl -X POST -H "content-type: text/turtle" "http://localhost:9003/ldes/admin/api/v1/eventstreams/occupancy/views" -d "@./definitions/occupancy.by-page.ttl"
+
 # send the message
 curl -X POST -H "Content-Type: application/json" "http://localhost:9004/p+r-pipeline" -d "@./data/message.json"
 ```
@@ -142,12 +147,15 @@ curl -X POST -H "Content-Type: application/json" "http://localhost:9004/p+r-pipe
 To verify the LDES, view and data:
 ```bash
 clear
+
 # get the LDES
-curl http://localhost:9003/ldes/occupancy
+curl "http://localhost:9003/ldes/occupancy"
+
 # get the view
-curl http://localhost:9003/ldes/occupancy/by-page
+curl "http://localhost:9003/ldes/occupancy/by-page"
+
 # get the data
-curl http://localhost:9003/ldes/occupancy/by-page?pageNumber=1
+curl "http://localhost:9003/ldes/occupancy/by-page?pageNumber=1"
 ```
 
 > **Note** that we explicitly noted the three steps to get to the data. Typically a system that wants to replicate and synchronize a LDES only needs access to the LDES itself and can discover the view and subsequently the pages of that view by following the links in the LDES and view. To do so, we can use a [LDES Client](https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/core/ldi-inputs/ldes-client) but that is a different tutorial.
