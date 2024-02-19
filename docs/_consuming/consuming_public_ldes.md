@@ -1,5 +1,5 @@
 ---
-title: Setup a minimal LDES client
+title: Consume a public LDES
 layout: home
 nav_order: 1
 ---
